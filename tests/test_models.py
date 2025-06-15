@@ -5,7 +5,7 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
 import joblib
 import os
-from train_models import train_models
+from medoptix_ai_treatment_optimizer.train_models import train_models
 
 def test_model_files_exist():
     """Test that model files exist"""

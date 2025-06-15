@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 import pytest
-from app import app
+from medoptix_ai_treatment_optimizer.app import app
 
 client = TestClient(app)
 
