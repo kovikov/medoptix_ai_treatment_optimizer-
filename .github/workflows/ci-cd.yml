@@ -35,7 +35,7 @@ jobs:
         
     - name: Train models
       run: |
-        python train_models.py
+        python -m medoptix_ai_treatment_optimizer.train_models
         
     - name: Run tests
       run: |
@@ -76,7 +76,7 @@ jobs:
         
     - name: Train models
       run: |
-        python train_models.py
+        python -m medoptix_ai_treatment_optimizer.train_models
         
     - name: Deploy to Render
       uses: render-actions/deploy@v1
