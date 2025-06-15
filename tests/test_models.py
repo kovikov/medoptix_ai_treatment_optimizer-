@@ -5,7 +5,66 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
 import joblib
 import os
-from medoptix_ai_treatment_optimizer.train_models import train_models
+from medoptix_ai_treatment_optimizer.train_models import train_models, validate_data, load_and_preprocess_data
+
+def test_validate_data():
+    """Test data validation function"""
+    # Test with valid data
+    valid_data = pd.DataFrame({
+        'patient_id': [1, 2],
+        'session_id': [1, 2],
+        'pain_level': [5.0, 6.0],
+        'home_adherence_pc': [80.0, 85.0],
+        'satisfaction': [4.0, 4.5],
+        'age': [45, 50],
+        'bmi': [25.0, 26.0],
+        'gender': ['M', 'F'],
+        'chronic_cond': ['None', 'None'],
+        'injury_type': ['back', 'knee']
+    })
+    assert validate_data(valid_data) is True
+    
+    # Test with missing column
+    invalid_data = valid_data.drop('pain_level', axis=1)
+    with pytest.raises(ValueError, match="Missing required columns"):
+        validate_data(invalid_data)
+    
+    # Test with invalid data type
+    invalid_data = valid_data.copy()
+    invalid_data['pain_level'] = ['high', 'low']
+    with pytest.raises(ValueError, match="must be numeric"):
+        validate_data(invalid_data)
+
+def test_load_and_preprocess_data():
+    """Test data loading and preprocessing"""
+    # Test with non-existent file
+    with pytest.raises(FileNotFoundError):
+        load_and_preprocess_data()
+    
+    # Create test data file
+    os.makedirs('data/processed', exist_ok=True)
+    test_data = pd.DataFrame({
+        'patient_id': [1, 2],
+        'session_id': [1, 2],
+        'pain_level': [5.0, 6.0],
+        'home_adherence_pc': [80.0, 85.0],
+        'satisfaction': [4.0, 4.5],
+        'age': [45, 50],
+        'bmi': [25.0, 26.0],
+        'gender': ['M', 'F'],
+        'chronic_cond': ['None', 'None'],
+        'injury_type': ['back', 'knee'],
+        'created_at': ['2023-01-01', '2023-01-02'],
+        'updated_at': ['2023-01-01', '2023-01-02']
+    })
+    test_data.to_csv('data/processed/cleaned_merged_medoptix.csv', index=False)
+    
+    # Test loading valid data
+    df = load_and_preprocess_data()
+    assert isinstance(df, pd.DataFrame)
+    assert all(col in df.columns for col in ['patient_id', 'session_id', 'pain_level'])
+    assert pd.api.types.is_datetime64_any_dtype(df['created_at'])
+    assert pd.api.types.is_datetime64_any_dtype(df['updated_at'])
 
 def test_model_files_exist():
     """Test that model files exist"""
