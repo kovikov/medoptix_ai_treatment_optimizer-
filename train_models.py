@@ -18,6 +18,8 @@ date_columns = ['created_at', 'updated_at']
 for col in date_columns:
     if col in df.columns:
         df[col] = pd.to_datetime(df[col])
+    else:
+        print(f"Warning: Column '{col}' is missing in the dataset. Skipping datetime conversion.")
 
 print("Preparing features...")
 # Calculate patient-level features
@@ -41,9 +43,16 @@ patient_features.columns = ['patient_id', 'session_count',
                           'age', 'bmi', 'gender', 'chronic_cond', 'injury_type']
 
 # Calculate additional features
-patient_features['treatment_duration'] = (df.groupby('patient_id')['created_at'].max() - 
-                                        df.groupby('patient_id')['created_at'].min()).dt.days
-patient_features['session_frequency'] = patient_features['session_count'] / patient_features['treatment_duration']
+if 'created_at' in df.columns:
+    patient_features['treatment_duration'] = (df.groupby('patient_id')['created_at'].max() - 
+                                            df.groupby('patient_id')['created_at'].min()).dt.days
+    patient_features['session_frequency'] = patient_features['session_count'] / patient_features['treatment_duration']
+else:
+    print("Warning: 'created_at' column not found. Using default values for treatment duration and session frequency.")
+    # Set default treatment duration to 30 days
+    patient_features['treatment_duration'] = 30
+    # Calculate session frequency based on default duration
+    patient_features['session_frequency'] = patient_features['session_count'] / 30
 
 # Calculate changes and trends
 for metric, mean_col, std_col in [
@@ -60,6 +69,11 @@ for metric, mean_col, std_col in [
         patient_features[f'{metric}_change_rate'] = patient_features[f'{metric}_change'] / patient_features['treatment_duration']
         # Calculate volatility
         patient_features[f'{metric}_volatility'] = patient_features[std_col] / (patient_features[mean_col] + 1e-6)
+    else:
+        print(f"Warning: '{metric}' column not found. Setting related features to 0.")
+        patient_features[f'{metric}_change'] = 0
+        patient_features[f'{metric}_change_rate'] = 0
+        patient_features[f'{metric}_volatility'] = 0
 
 print("Preparing target variables...")
 # Define dropout (patients with less than 8 sessions)
