@@ -1,25 +1,33 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import joblib
-import numpy as np
 import pandas as pd
+import numpy as np
+import joblib
+import os
+from .train_models import train_models
 from typing import List, Optional
 
 app = FastAPI(
     title="MedOptix AI Treatment Optimizer",
-    description="API for predicting patient dropout and forecasting adherence",
+    description="API for predicting patient dropout risk and forecasting treatment adherence",
     version="1.0.0"
 )
 
-# Load models and scalers
+# Initialize models
 try:
     dropout_model = joblib.load('models/dropout_prediction_model.joblib')
     dropout_scaler = joblib.load('models/dropout_prediction_scaler.joblib')
     adherence_model = joblib.load('models/adherence_forecasting_model.joblib')
     adherence_scaler = joblib.load('models/adherence_forecasting_scaler.joblib')
-except Exception as e:
-    print(f"Error loading models: {str(e)}")
-    raise
+    print("Models loaded successfully")
+except FileNotFoundError:
+    print("Model files not found. Training new models...")
+    try:
+        dropout_model, dropout_scaler, adherence_model, adherence_scaler = train_models()
+        print("Models trained successfully")
+    except Exception as e:
+        print(f"Error training models: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to initialize models")
 
 # Define input models
 class DropoutFeatures(BaseModel):
