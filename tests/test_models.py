@@ -6,6 +6,7 @@ from sklearn.preprocessing import StandardScaler
 import joblib
 import os
 from medoptix_ai_treatment_optimizer.train_models import train_models, validate_data, load_and_preprocess_data
+from medoptix_ai_treatment_optimizer.utils import prepare_features
 
 def test_validate_data():
     """Test data validation function"""

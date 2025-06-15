@@ -1,11 +1,10 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import pandas as pd
-import numpy as np
 import joblib
 import os
-from .train_models import train_models
-from typing import List, Optional
+from medoptix_ai_treatment_optimizer.utils import prepare_features
+from medoptix_ai_treatment_optimizer.train_models import train_models
 
 app = FastAPI(
     title="MedOptix AI Treatment Optimizer",
@@ -85,45 +84,6 @@ class AdherenceFeatures(BaseModel):
 async def root():
     return {"message": "Welcome to MedOptix AI Treatment Optimizer API"}
 
-def prepare_features(data: PatientData) -> pd.DataFrame:
-    """Prepare features for prediction"""
-    # Convert input to DataFrame
-    input_data = pd.DataFrame([data.dict()])
-    
-    # Rename columns to match training data
-    column_mapping = {
-        'chronic_condition': 'chronic_cond'
-    }
-    input_data = input_data.rename(columns=column_mapping)
-    
-    # Handle categorical variables
-    input_data = pd.get_dummies(input_data, columns=['gender', 'chronic_cond', 'injury_type'])
-    
-    # Ensure all required columns are present
-    required_columns = [
-        'session_count', 'treatment_duration', 'session_frequency',
-        'pain_level_mean', 'pain_level_std', 'pain_change', 'pain_change_rate',
-        'pain_volatility', 'home_adherence_mean', 'home_adherence_std',
-        'adherence_change', 'adherence_trend', 'adherence_volatility',
-        'satisfaction_mean', 'satisfaction_std', 'satisfaction_change',
-        'satisfaction_trend', 'age', 'bmi',
-        'gender_Male', 'gender_Female',
-        'chronic_cond_None', 'chronic_cond_Asthma', 'chronic_cond_Cardio',
-        'chronic_cond_Diabetes', 'chronic_cond_Hypertension',
-        'injury_type_back', 'injury_type_knee', 'injury_type_shoulder',
-        'injury_type_other'
-    ]
-    
-    # Add missing columns with default values
-    for col in required_columns:
-        if col not in input_data.columns:
-            input_data[col] = 0
-    
-    # Reorder columns to match training data
-    input_data = input_data[required_columns]
-    
-    return input_data
-
 # Load models and scalers
 try:
     dropout_model = joblib.load('models/dropout_prediction_model.joblib')
@@ -140,10 +100,13 @@ except FileNotFoundError:
 
 @app.post("/predict_dropout")
 async def predict_dropout(data: PatientData):
-    """Predict dropout probability"""
+    """Predict dropout probability for a patient"""
     try:
+        # Convert input data to DataFrame
+        input_data = pd.DataFrame([data.dict()])
+        
         # Prepare features
-        features = prepare_features(data)
+        features = prepare_features(input_data)
         
         # Scale features
         scaled_features = dropout_scaler.transform(features)
@@ -164,34 +127,39 @@ async def predict_dropout(data: PatientData):
             "risk_category": risk_category
         }
     except Exception as e:
+        print(f"Error in predict_dropout: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/forecast_adherence")
 async def forecast_adherence(data: PatientData):
-    """Forecast adherence"""
+    """Forecast adherence for a patient"""
     try:
+        # Convert input data to DataFrame
+        input_data = pd.DataFrame([data.dict()])
+        
         # Prepare features
-        features = prepare_features(data)
+        features = prepare_features(input_data)
         
         # Scale features
         scaled_features = adherence_scaler.transform(features)
         
         # Make prediction
-        predicted_adherence = float(adherence_model.predict(scaled_features)[0])
+        adherence_pred = adherence_model.predict(scaled_features)[0]
         
         # Determine adherence category
-        if predicted_adherence >= 80:
+        if adherence_pred >= 80:
             adherence_category = "High"
-        elif predicted_adherence >= 60:
+        elif adherence_pred >= 60:
             adherence_category = "Medium"
         else:
             adherence_category = "Low"
         
         return {
-            "predicted_adherence": predicted_adherence,
+            "forecasted_adherence": float(adherence_pred),
             "adherence_category": adherence_category
         }
     except Exception as e:
+        print(f"Error in forecast_adherence: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 def get_adherence_category(adherence: float) -> str:
