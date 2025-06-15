@@ -1,0 +1,9 @@
+clinic_id,city,country,type,postcode,capacity,staff_count,speciality,avg_rating
+1,london,UK,NHS,1184,109,26,neuro-rehab,4.7
+2,manchester,UK,PRIVATE,39611,144,13,neuro-rehab,3.7
+3,birmingham,UK,NHS,24119,153,30,neuro-rehab,4.6
+4,berlin,DE,PRIVATE,42939,176,21,sports pt,4.2
+5,munich,DE,NHS,12254,150,19,sports pt,4.4
+6,leeds,UK,NHS,25336,193,19,orthopedic pt,4.2
+7,glasgow,UK,NHS,90786,145,16,sports pt,3.7
+8,hamburg,DE,PRIVATE,45024,156,28,orthopedic pt,4.4
