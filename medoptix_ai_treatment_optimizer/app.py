@@ -78,63 +78,57 @@ async def root():
     return {"message": "Welcome to MedOptix AI Treatment Optimizer API"}
 
 @app.post("/predict_dropout")
-async def predict_dropout(features: DropoutFeatures):
+async def predict_dropout(data: PatientData):
+    """Predict dropout probability"""
     try:
-        # Convert input to DataFrame
-        input_data = pd.DataFrame([features.dict()])
-        
-        # Handle categorical variables
-        input_data = pd.get_dummies(input_data, columns=['gender', 'chronic_condition', 'injury_type'])
-        
-        # Ensure all required columns are present
-        required_columns = dropout_scaler.feature_names_in_
-        for col in required_columns:
-            if col not in input_data.columns:
-                input_data[col] = 0
-        
-        # Reorder columns to match training data
-        input_data = input_data[required_columns]
+        # Prepare features
+        features = prepare_features(data)
         
         # Scale features
-        scaled_features = dropout_scaler.transform(input_data)
+        scaled_features = dropout_scaler.transform(features)
         
         # Make prediction
-        dropout_probability = dropout_model.predict_proba(scaled_features)[0][1]
+        dropout_prob = dropout_model.predict_proba(scaled_features)[0][1]
+        
+        # Determine risk category
+        if dropout_prob >= 0.7:
+            risk_category = "High"
+        elif dropout_prob >= 0.4:
+            risk_category = "Medium"
+        else:
+            risk_category = "Low"
         
         return {
-            "dropout_probability": float(dropout_probability),
-            "prediction": "High Risk" if dropout_probability > 0.5 else "Low Risk"
+            "dropout_probability": float(dropout_prob),
+            "risk_category": risk_category
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/forecast_adherence")
-async def forecast_adherence(features: AdherenceFeatures):
+async def forecast_adherence(data: PatientData):
+    """Forecast adherence"""
     try:
-        # Convert input to DataFrame
-        input_data = pd.DataFrame([features.dict()])
-        
-        # Handle categorical variables
-        input_data = pd.get_dummies(input_data, columns=['gender', 'chronic_condition', 'injury_type'])
-        
-        # Ensure all required columns are present
-        required_columns = adherence_scaler.feature_names_in_
-        for col in required_columns:
-            if col not in input_data.columns:
-                input_data[col] = 0
-        
-        # Reorder columns to match training data
-        input_data = input_data[required_columns]
+        # Prepare features
+        features = prepare_features(data)
         
         # Scale features
-        scaled_features = adherence_scaler.transform(input_data)
+        scaled_features = adherence_scaler.transform(features)
         
         # Make prediction
-        predicted_adherence = adherence_model.predict(scaled_features)[0]
+        predicted_adherence = float(adherence_model.predict(scaled_features)[0])
+        
+        # Determine adherence category
+        if predicted_adherence >= 80:
+            adherence_category = "High"
+        elif predicted_adherence >= 60:
+            adherence_category = "Medium"
+        else:
+            adherence_category = "Low"
         
         return {
-            "predicted_adherence": float(predicted_adherence),
-            "adherence_category": get_adherence_category(predicted_adherence)
+            "predicted_adherence": predicted_adherence,
+            "adherence_category": adherence_category
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

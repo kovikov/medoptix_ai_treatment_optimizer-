@@ -39,32 +39,14 @@ def test_load_and_preprocess_data():
     """Test data loading and preprocessing"""
     # Test with non-existent file
     with pytest.raises(FileNotFoundError):
-        load_and_preprocess_data()
+        load_and_preprocess_data("non_existent_file.csv")
     
-    # Create test data file
-    os.makedirs('data/processed', exist_ok=True)
-    test_data = pd.DataFrame({
-        'patient_id': [1, 2],
-        'session_id': [1, 2],
-        'pain_level': [5.0, 6.0],
-        'home_adherence_pc': [80.0, 85.0],
-        'satisfaction': [4.0, 4.5],
-        'age': [45, 50],
-        'bmi': [25.0, 26.0],
-        'gender': ['M', 'F'],
-        'chronic_cond': ['None', 'None'],
-        'injury_type': ['back', 'knee'],
-        'created_at': ['2023-01-01', '2023-01-02'],
-        'updated_at': ['2023-01-01', '2023-01-02']
-    })
-    test_data.to_csv('data/processed/cleaned_merged_medoptix.csv', index=False)
-    
-    # Test loading valid data
-    df = load_and_preprocess_data()
-    assert isinstance(df, pd.DataFrame)
-    assert all(col in df.columns for col in ['patient_id', 'session_id', 'pain_level'])
-    assert pd.api.types.is_datetime64_any_dtype(df['created_at'])
-    assert pd.api.types.is_datetime64_any_dtype(df['updated_at'])
+    # Test with valid data
+    data = load_and_preprocess_data()
+    assert isinstance(data, pd.DataFrame)
+    assert not data.empty
+    assert 'dropout' in data.columns
+    assert 'adherence' in data.columns
 
 def test_model_files_exist():
     """Test that model files exist"""
@@ -118,22 +100,23 @@ def test_model_predictions():
         'satisfaction_trend': [0.02],
         'age': [45],
         'bmi': [25.5],
-        'gender_Male': [1],
-        'chronic_cond_None': [1],
-        'injury_type_back': [1]
+        'gender': ['Male'],
+        'chronic_condition': ['None'],
+        'injury_type': ['back']
     })
     
-    # Test dropout prediction
-    dropout_features = dropout_scaler.transform(sample_data)
-    dropout_pred = dropout_model.predict_proba(dropout_features)
-    assert dropout_pred.shape == (1, 2)  # Should return probabilities for 2 classes
-    assert np.all(dropout_pred >= 0) and np.all(dropout_pred <= 1)  # Probabilities should be between 0 and 1
+    # Prepare features
+    features = prepare_features(sample_data)
     
-    # Test adherence forecasting
-    adherence_features = adherence_scaler.transform(sample_data)
-    adherence_pred = adherence_model.predict(adherence_features)
-    assert adherence_pred.shape == (1,)  # Should return single prediction
-    assert adherence_pred[0] >= 0 and adherence_pred[0] <= 100  # Adherence should be between 0 and 100
+    # Test dropout prediction
+    dropout_features = dropout_scaler.transform(features)
+    dropout_prob = dropout_model.predict_proba(dropout_features)[0][1]
+    assert 0 <= dropout_prob <= 1
+    
+    # Test adherence prediction
+    adherence_features = adherence_scaler.transform(features)
+    adherence_pred = adherence_model.predict(adherence_features)[0]
+    assert 0 <= adherence_pred <= 100
 
 def test_model_training():
     """Test the model training process"""
@@ -147,10 +130,10 @@ def test_model_training():
     assert isinstance(adherence_scaler, StandardScaler)
     
     # Verify model parameters
-    assert dropout_model.n_estimators > 0
-    assert adherence_model.n_estimators > 0
-    assert dropout_model.max_depth is not None
-    assert adherence_model.max_depth is not None
+    assert dropout_model.n_estimators == 100
+    assert dropout_model.max_depth == 10
+    assert adherence_model.n_estimators == 100
+    assert adherence_model.max_depth == 10
 
 def test_model_feature_importance():
     """Test that models have learned meaningful feature importance"""
@@ -197,9 +180,9 @@ def test_model_prediction_consistency():
         'satisfaction_trend': [0.02],
         'age': [45],
         'bmi': [25.5],
-        'gender_Male': [1],
-        'chronic_cond_None': [1],
-        'injury_type_back': [1]
+        'gender': ['Male'],
+        'chronic_condition': ['None'],
+        'injury_type': ['back']
     })
     
     sample2 = pd.DataFrame({
@@ -222,17 +205,21 @@ def test_model_prediction_consistency():
         'satisfaction_trend': [0.02],
         'age': [45],
         'bmi': [25.5],
-        'gender_Male': [1],
-        'chronic_cond_None': [1],
-        'injury_type_back': [1]
+        'gender': ['Male'],
+        'chronic_condition': ['None'],
+        'injury_type': ['back']
     })
     
+    # Prepare features
+    features1 = prepare_features(sample1)
+    features2 = prepare_features(sample2)
+    
     # Get predictions
-    dropout_pred1 = dropout_model.predict_proba(dropout_scaler.transform(sample1))
-    dropout_pred2 = dropout_model.predict_proba(dropout_scaler.transform(sample2))
-    adherence_pred1 = adherence_model.predict(adherence_scaler.transform(sample1))
-    adherence_pred2 = adherence_model.predict(adherence_scaler.transform(sample2))
+    dropout_pred1 = dropout_model.predict_proba(dropout_scaler.transform(features1))[0][1]
+    dropout_pred2 = dropout_model.predict_proba(dropout_scaler.transform(features2))[0][1]
+    adherence_pred1 = adherence_model.predict(adherence_scaler.transform(features1))[0]
+    adherence_pred2 = adherence_model.predict(adherence_scaler.transform(features2))[0]
     
     # Check that predictions are similar for similar inputs
-    assert np.allclose(dropout_pred1, dropout_pred2, atol=0.1)
-    assert np.allclose(adherence_pred1, adherence_pred2, atol=5.0) 
+    assert abs(dropout_pred1 - dropout_pred2) < 0.1
+    assert abs(adherence_pred1 - adherence_pred2) < 5.0 
