@@ -27,28 +27,82 @@ def validate_data(df: pd.DataFrame) -> bool:
     
     return True
 
-def load_and_preprocess_data() -> pd.DataFrame:
-    """Load and preprocess the data with proper error handling."""
-    data_path = Path('data/processed/cleaned_merged_medoptix.csv')
-    
-    if not data_path.exists():
-        raise FileNotFoundError(f"Data file not found at {data_path}")
-    
+def load_and_preprocess_data(file_path='data/processed/cleaned_merged_medoptix.csv'):
+    """Load and preprocess the data"""
     try:
-        df = pd.read_csv(data_path)
-        validate_data(df)
+        # Load data
+        df = pd.read_csv(file_path)
         
-        # Convert date columns to datetime
-        date_columns = ['created_at', 'updated_at']
-        for col in date_columns:
+        # Convert datetime columns if they exist
+        datetime_columns = ['created_at', 'updated_at']
+        for col in datetime_columns:
             if col in df.columns:
                 df[col] = pd.to_datetime(df[col])
             else:
                 print(f"Warning: Column '{col}' is missing in the dataset. Skipping datetime conversion.")
         
-        return df
+        # Calculate patient-level features
+        patient_features = df.groupby('patient_id').agg({
+            'session_id': 'count',  # session_count
+            'pain_level': ['mean', 'std'],  # pain metrics
+            'home_adherence_pc': ['mean', 'std'],  # adherence metrics
+            'satisfaction': ['mean', 'std'],  # satisfaction metrics
+            'age': 'first',
+            'bmi': 'first',
+            'gender': 'first',
+            'chronic_cond': 'first',  # Note: using chronic_cond instead of chronic_condition
+            'injury_type': 'first'
+        }).reset_index()
+        
+        # Flatten column names
+        patient_features.columns = ['patient_id', 'session_count', 
+                                  'pain_level_mean', 'pain_level_std',
+                                  'home_adherence_mean', 'home_adherence_std',
+                                  'satisfaction_mean', 'satisfaction_std',
+                                  'age', 'bmi', 'gender', 'chronic_cond', 'injury_type']
+        
+        # Calculate additional features
+        if 'created_at' in df.columns:
+            patient_features['treatment_duration'] = (df.groupby('patient_id')['created_at'].max() - 
+                                                    df.groupby('patient_id')['created_at'].min()).dt.days
+            patient_features['session_frequency'] = patient_features['session_count'] / patient_features['treatment_duration']
+        else:
+            print("Warning: 'created_at' column not found. Using default values for treatment duration and session frequency.")
+            patient_features['treatment_duration'] = 30
+            patient_features['session_frequency'] = patient_features['session_count'] / 30
+        
+        # Calculate changes and trends
+        for metric, mean_col, std_col in [
+            ('pain_level', 'pain_level_mean', 'pain_level_std'),
+            ('home_adherence_pc', 'home_adherence_mean', 'home_adherence_std'),
+            ('satisfaction', 'satisfaction_mean', 'satisfaction_std')
+        ]:
+            if metric in df.columns:
+                # Calculate change
+                patient_features[f'{metric}_change'] = df.groupby('patient_id')[metric].apply(
+                    lambda x: x.iloc[-1] - x.iloc[0] if len(x) > 1 else 0
+                ).values
+                # Calculate change rate
+                patient_features[f'{metric}_change_rate'] = patient_features[f'{metric}_change'] / patient_features['treatment_duration']
+                # Calculate volatility
+                patient_features[f'{metric}_volatility'] = patient_features[std_col] / (patient_features[mean_col] + 1e-6)
+            else:
+                print(f"Warning: '{metric}' column not found. Setting related features to 0.")
+                patient_features[f'{metric}_change'] = 0
+                patient_features[f'{metric}_change_rate'] = 0
+                patient_features[f'{metric}_volatility'] = 0
+        
+        # Define dropout (patients with less than 8 sessions)
+        patient_features['dropout'] = (patient_features['session_count'] < 8).astype(int)
+        
+        # Define adherence target
+        patient_features['adherence'] = patient_features['home_adherence_mean']
+        
+        return patient_features
+        
     except Exception as e:
-        raise RuntimeError(f"Error loading data: {str(e)}")
+        print(f"Error loading data: {str(e)}")
+        raise
 
 def train_models():
     """Train and save models"""
@@ -127,6 +181,12 @@ def prepare_features(data):
     # Create a copy of the data
     features = data.copy()
     
+    # Rename columns to match expected names
+    column_mapping = {
+        'chronic_cond': 'chronic_condition'
+    }
+    features = features.rename(columns=column_mapping)
+    
     # Handle categorical variables
     features = pd.get_dummies(features, columns=['gender', 'chronic_condition', 'injury_type'])
     
@@ -139,8 +199,8 @@ def prepare_features(data):
         'satisfaction_mean', 'satisfaction_std', 'satisfaction_change',
         'satisfaction_trend', 'age', 'bmi',
         'gender_Male', 'gender_Female',
-        'chronic_cond_None', 'chronic_cond_Asthma', 'chronic_cond_Cardio',
-        'chronic_cond_Diabetes', 'chronic_cond_Hypertension',
+        'chronic_condition_None', 'chronic_condition_Asthma', 'chronic_condition_Cardio',
+        'chronic_condition_Diabetes', 'chronic_condition_Hypertension',
         'injury_type_back', 'injury_type_knee', 'injury_type_shoulder',
         'injury_type_other'
     ]
